@@ -117,22 +117,48 @@ with st.sidebar.expander("Add a New Car"):
     with st.form("new_car_form", clear_on_submit=True):
         team_options = teams_df['TEAM_NAME'].tolist() if not teams_df.empty else []
         category_options = categories_df['CATEGORY_NAME'].tolist() if not categories_df.empty else []
-        driver_options = {f"{row.DRIVER_NAME} ({row.TEAM_NAME})": row.DRIVER_ID for index, row in drivers_df.iterrows()}
-
-        car_model = st.text_input("Car Model")
-        selected_team = st.selectbox("Car's Team", options=team_options)
-        selected_category = st.selectbox("Car Category", options=category_options)
-        selected_driver_label = st.selectbox("Assign Driver", options=list(driver_options.keys()))
         
-        if st.form_submit_button("Add Car"):
-            if car_model and selected_team and selected_category and selected_driver_label:
-                driver_id = driver_options[selected_driver_label]
-                sql = "INSERT INTO BOOTCAMP_RALLY.CARS_DATA.CARS (team_name, model, category_name, driver_id) VALUES (%s, %s, %s, %s)"
-                if execute_command(sql, (selected_team, car_model, selected_category, driver_id)):
-                    st.success(f"Car '{car_model}' added!")
+        if not unassigned_drivers_df.empty:
+            unassigned_driver_options = {f"{row.DRIVER_NAME} ({row.TEAM_NAME})": row.DRIVER_ID for _, row in unassigned_drivers_df.iterrows()}
+            
+            car_model = st.text_input("Car Model")
+            selected_team = st.selectbox("Car's Team", options=team_options)
+            selected_category = st.selectbox("Car Category", options=category_options)
+            selected_driver_label = st.selectbox("Assign Unassigned Driver", options=list(unassigned_driver_options.keys()))
+            
+            if st.form_submit_button("Add Car"):
+                if car_model and selected_team and selected_category and selected_driver_label:
+                    driver_id = unassigned_driver_options[selected_driver_label]
+                    sql = "INSERT INTO BOOTCAMP_RALLY.CARS_DATA.CARS (team_name, model, category_name, driver_id) VALUES (%s, %s, %s, %s)"
+                    if execute_command(sql, (selected_team, car_model, selected_category, driver_id)):
+                        st.success(f"Car '{car_model}' added!")
+                        st.cache_data.clear()
+                        st.rerun()
+        else:
+            st.warning("No unassigned drivers available. Add a new driver to assign a car.")
+# Reassign Driver
+with st.sidebar.expander("Reassign Driver"):
+    with st.form("reassign_driver_form", clear_on_submit=True):
+        
+        car_options = {f"{row.MODEL} (Driver: {row.DRIVER_NAME})": row.CAR_ID for _, row in cars_df.iterrows()}
+        
+        if not car_options or unassigned_drivers_df.empty:
+            st.info("You need at least one car and one unassigned driver to make a reassignment.")
+        else:
+            selected_car_label = st.selectbox("Select Car to Reassign", options=list(car_options.keys()))
+            
+            unassigned_driver_options = {f"{row.DRIVER_NAME} ({row.TEAM_NAME})": row.DRIVER_ID for _, row in unassigned_drivers_df.iterrows()}
+            new_driver_label = st.selectbox("Select New Unassigned Driver", options=list(unassigned_driver_options.keys()))
+
+            if st.form_submit_button("Reassign"):
+                car_id_to_update = car_options[selected_car_label]
+                new_driver_id = unassigned_driver_options[new_driver_label]
+                
+                sql = "UPDATE BOOTCAMP_RALLY.CARS_DATA.CARS SET driver_id = %s WHERE car_id = %s"
+                if execute_command(sql, (new_driver_id, car_id_to_update)):
+                    st.success(f"Driver reassigned successfully!")
                     st.cache_data.clear()
                     st.rerun()
-
 # Race Simulation
 st.header("Rally Simulation")
 if st.button("Start Race!"):
@@ -179,3 +205,4 @@ if st.button("Start Race!"):
         
         st.cache_data.clear()
         st.rerun()
+
