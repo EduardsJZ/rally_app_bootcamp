@@ -185,4 +185,5 @@ if st.button("🚀 Start Race!"):
         st.success(f"Awarded ${PRIZE:,.2f} to Team '{winner['Team']}'.")
         
         st.cache_data.clear()
-        st.experimental_rerun()
+        st.rerun()
+
