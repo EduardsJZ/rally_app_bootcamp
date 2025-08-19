@@ -149,8 +149,9 @@ with st.sidebar.expander("Reassign Driver"):
         assigned_driver_ids = set(cars_df['DRIVER_ID'].dropna())
         unassigned_drivers_df = drivers_df[~drivers_df['DRIVER_ID'].isin(assigned_driver_ids)]
         
-        car_options = {f"{row.MODEL} (Driver: {row.DRIVER_NAME})": row.CAR_ID for _, row in cars_df.iterrows()}
-        
+        car_options = {f"{row.MODEL} (Driver: {row.DRIVER_NAME if pd.notna(row.DRIVER_NAME) else 'N/A'})": row.CAR_ID for _, row in cars_df.iterrows()}
+        team_options = teams_df['TEAM_NAME'].tolist() if not teams_df.empty else []
+
         if not car_options or unassigned_drivers_df.empty:
             st.info("You need at least one car and one unassigned driver to make a reassignment.")
         else:
@@ -158,16 +159,25 @@ with st.sidebar.expander("Reassign Driver"):
             
             unassigned_driver_options = {f"{row.DRIVER_NAME} ({row.TEAM_NAME})": row.DRIVER_ID for _, row in unassigned_drivers_df.iterrows()}
             new_driver_label = st.selectbox("Select New Unassigned Driver", options=list(unassigned_driver_options.keys()))
+            
+            new_team_name = st.selectbox("Select New Team for Driver & Car", options=team_options)
 
             if st.form_submit_button("Reassign"):
                 car_id_to_update = car_options[selected_car_label]
                 new_driver_id = unassigned_driver_options[new_driver_label]
                 
-                sql = "UPDATE BOOTCAMP_RALLY.CARS_DATA.CARS SET driver_id = %s WHERE car_id = %s"
-                if execute_command(sql, (new_driver_id, car_id_to_update)):
-                    st.success(f"Driver reassigned successfully!")
+                sql_car = "UPDATE BOOTCAMP_RALLY.CARS_DATA.CARS SET driver_id = %s, team_name = %s WHERE car_id = %s"
+                sql_driver = "UPDATE BOOTCAMP_RALLY.TEAMS_DATA.DRIVERS SET team_name = %s WHERE driver_id = %s"
+
+                car_updated = execute_command(sql_car, (new_driver_id, new_team_name, car_id_to_update))
+                driver_updated = execute_command(sql_driver, (new_team_name, new_driver_id))
+
+                if car_updated and driver_updated:
+                    st.success(f"Driver and Car reassigned to {new_team_name} successfully!")
                     st.cache_data.clear()
                     st.rerun()
+                else:
+                    st.error("An error occurred during reassignment.")
 
 # Race Simulation
 st.header("Rally Simulation")
@@ -213,3 +223,4 @@ if st.button("Start Race!"):
         
         st.cache_data.clear()
         st.rerun()
+
