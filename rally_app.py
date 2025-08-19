@@ -2,10 +2,10 @@ import streamlit as st
 import snowflake.connector
 import pandas as pd
 import random
+import time
 
 # Snowflake Connection
 def snowflake_connection():
-    """Establishes and returns a connection to Snowflake using st.secrets."""
     try:
         conn = snowflake.connector.connect(
             **st.secrets["snowflake"]
@@ -17,7 +17,6 @@ def snowflake_connection():
 
 # Database Functions
 def run_query(query):
-    """Executes a query and returns the result as a pandas DataFrame."""
     conn = snowflake_connection()
     try:
         return pd.read_sql(query, conn)
@@ -29,7 +28,6 @@ def run_query(query):
             conn.close()
 
 def execute_command(command, params=None):
-    """Executes a command (INSERT, UPDATE) against the database."""
     conn = snowflake_connection()
     try:
         with conn.cursor() as cur:
@@ -54,12 +52,12 @@ def get_data():
     drivers_df = run_query("SELECT * FROM BOOTCAMP_RALLY.TEAMS_DATA.DRIVERS")
     cars_query = """
     SELECT
-        c.CAR_ID, c.TEAM_NAME, c.MODEL, c.CATEGORY_NAME,
+        c.CAR_ID, c.TEAM_NAME, c.MODEL, c.CATEGORY_NAME, c.DRIVER_ID,
         cat.HORSEPOWER, cat.DRIVETRAIN, cat.MIN_WEIGHT_KG,
         d.DRIVER_NAME, d.SKILL_LEVEL, d.LUCK_LEVEL
     FROM BOOTCAMP_RALLY.CARS_DATA.CARS c
-    JOIN BOOTCAMP_RALLY.CARS_DATA.CAR_CATEGORIES cat ON c.CATEGORY_NAME = cat.CATEGORY_NAME
-    JOIN BOOTCAMP_RALLY.TEAMS_DATA.DRIVERS d ON c.DRIVER_ID = d.DRIVER_ID;
+    LEFT JOIN BOOTCAMP_RALLY.CARS_DATA.CAR_CATEGORIES cat ON c.CATEGORY_NAME = cat.CATEGORY_NAME
+    LEFT JOIN BOOTCAMP_RALLY.TEAMS_DATA.DRIVERS d ON c.DRIVER_ID = d.DRIVER_ID;
     """
     cars_df = run_query(cars_query)
     categories_df = run_query("SELECT CATEGORY_NAME FROM BOOTCAMP_RALLY.CARS_DATA.CAR_CATEGORIES")
@@ -78,7 +76,12 @@ if not drivers_df.empty:
 
 st.header("Registered Racing Cars")
 if not cars_df.empty:
-    st.dataframe(cars_df, use_container_width=True)
+    display_cars_df = cars_df.copy()
+    if 'DRIVER_ID' in display_cars_df.columns:
+        st.dataframe(display_cars_df.drop(columns=['DRIVER_ID']), use_container_width=True)
+    else:
+        st.dataframe(display_cars_df, use_container_width=True)
+
 
 # Sidebar for Actions
 st.sidebar.header("Management Actions")
@@ -139,6 +142,7 @@ with st.sidebar.expander("Add a New Car"):
                         st.rerun()
         else:
             st.warning("No unassigned drivers available. Add a new driver to assign a car.")
+
 # Reassign Driver
 with st.sidebar.expander("Reassign Driver"):
     with st.form("reassign_driver_form", clear_on_submit=True):
@@ -164,30 +168,30 @@ with st.sidebar.expander("Reassign Driver"):
                     st.success(f"Driver reassigned successfully!")
                     st.cache_data.clear()
                     st.rerun()
+
 # Race Simulation
 st.header("Rally Simulation")
 if st.button("Start Race!"):
-    if len(cars_df) < 2:
-        st.warning("Not enough cars to start a race! You need at least 2.")
+    raceable_cars = cars_df.dropna(subset=['DRIVER_ID'])
+    if len(raceable_cars) < 2:
+        st.warning("Not enough cars with assigned drivers to start a race! You need at least 2.")
     else:
         st.info("Simulating a 100km rally...")
         FEE = 1000
-        PRIZE = len(cars_df['TEAM_NAME'].unique()) * FEE * 0.8
+        PRIZE = len(raceable_cars['TEAM_NAME'].unique()) * FEE * 0.8
         
         st.write(f"**Race Details:** Fee: ${FEE:,.2f}, Prize: ${PRIZE:,.2f}")
         
-
-        teams_in_race = cars_df['TEAM_NAME'].unique()
+        teams_in_race = raceable_cars['TEAM_NAME'].unique()
         for team in teams_in_race:
             execute_command("UPDATE BOOTCAMP_RALLY.TEAMS_DATA.TEAMS SET budget = budget - %s WHERE team_name = %s", (FEE, team))
         
-
         race_results = []
-        for _, car in cars_df.iterrows():
+        for _, car in raceable_cars.iterrows():
             power_to_weight = car['HORSEPOWER'] / car['MIN_WEIGHT_KG']
             drivetrain_bonus = 1.05 if car['DRIVETRAIN'] == '4WD' else 1.0
             skill_factor = 1 + ((car['SKILL_LEVEL'] - 50) / 50) * 0.1 # +/- 10% effect
-            luck_factor = random.uniform(1 - (car['LUCK_LEVEL'] / 1000), 1 + (car['LUCK_LEVEL'] / 1000)) # +/- up to 10%
+            luck_factor = random.uniform(1 - (car['LUCK_LEVEL'] / 1000), 1 + (car['LUCK_LEVEL'] / 1000))
             
             performance_score = power_to_weight * drivetrain_bonus * skill_factor * luck_factor
             time_taken = 100 / performance_score
@@ -196,7 +200,6 @@ if st.button("Start Race!"):
                 "Team": car['TEAM_NAME'], "Driver": car['DRIVER_NAME'],
                 "Car Model": car['MODEL'], "Time": time_taken
             })
-
 
         results_df = pd.DataFrame(race_results).sort_values(by="Time").reset_index(drop=True)
         results_df.index += 1
@@ -210,5 +213,3 @@ if st.button("Start Race!"):
         
         st.cache_data.clear()
         st.rerun()
-
-
