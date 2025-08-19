@@ -115,6 +115,9 @@ with st.sidebar.expander("Add a New Driver"):
 # Add a New Car
 with st.sidebar.expander("Add a New Car"):
     with st.form("new_car_form", clear_on_submit=True):
+        assigned_driver_ids = set(cars_df['DRIVER_ID'].dropna())
+        unassigned_drivers_df = drivers_df[~drivers_df['DRIVER_ID'].isin(assigned_driver_ids)]
+
         team_options = teams_df['TEAM_NAME'].tolist() if not teams_df.empty else []
         category_options = categories_df['CATEGORY_NAME'].tolist() if not categories_df.empty else []
         
@@ -139,6 +142,8 @@ with st.sidebar.expander("Add a New Car"):
 # Reassign Driver
 with st.sidebar.expander("Reassign Driver"):
     with st.form("reassign_driver_form", clear_on_submit=True):
+        assigned_driver_ids = set(cars_df['DRIVER_ID'].dropna())
+        unassigned_drivers_df = drivers_df[~drivers_df['DRIVER_ID'].isin(assigned_driver_ids)]
         
         car_options = {f"{row.MODEL} (Driver: {row.DRIVER_NAME})": row.CAR_ID for _, row in cars_df.iterrows()}
         
@@ -205,4 +210,5 @@ if st.button("Start Race!"):
         
         st.cache_data.clear()
         st.rerun()
+
 
