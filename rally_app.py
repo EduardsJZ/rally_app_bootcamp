@@ -43,7 +43,7 @@ def execute_command(command, params=None):
 # Main Application Logic
 st.set_page_config(page_title="Bootcamp Rally Racing", layout="wide")
 st.title("Bootcamp Rally Racing Management App")
-st.write("Manage your racing teams, cars, drivers, and compete in an exciting rally!")
+st.write("Manage your racing teams, cars, drivers, and compete in a rally!")
 
 # Caching Data
 @st.cache_data(ttl=60)
@@ -178,7 +178,63 @@ with st.sidebar.expander("Reassign Driver"):
                     st.rerun()
                 else:
                     st.error("An error occurred during reassignment.")
+# Removal Actions
+st.sidebar.header("Removal Actions")
 
+# Remove a Car
+with st.sidebar.expander("Remove a Car"):
+    with st.form("remove_car_form", clear_on_submit=True):
+        car_to_remove_options = {f"{row.MODEL} ({row.TEAM_NAME})": row.CAR_ID for _, row in cars_df.iterrows()}
+        if not car_to_remove_options:
+            st.warning("No cars to remove.")
+        else:
+            selected_car_label = st.selectbox("Select Car to Remove", options=list(car_to_remove_options.keys()))
+            if st.form_submit_button("Remove Car"):
+                car_id_to_remove = car_to_remove_options[selected_car_label]
+                sql = "DELETE FROM BOOTCAMP_RALLY.CARS_DATA.CARS WHERE car_id = %s"
+                if execute_command(sql, (car_id_to_remove,)):
+                    st.success("Car removed successfully!")
+                    st.cache_data.clear()
+                    st.rerun()
+
+# Remove a Driver
+with st.sidebar.expander("Remove a Driver"):
+    with st.form("remove_driver_form", clear_on_submit=True):
+        assigned_driver_ids = set(cars_df['DRIVER_ID'].dropna())
+        removable_drivers_df = drivers_df[~drivers_df['DRIVER_ID'].isin(assigned_driver_ids)]
+        
+        if removable_drivers_df.empty:
+            st.warning("No unassigned drivers to remove. Reassign drivers from cars first.")
+        else:
+            driver_to_remove_options = {f"{row.DRIVER_NAME} ({row.TEAM_NAME})": row.DRIVER_ID for _, row in removable_drivers_df.iterrows()}
+            selected_driver_label = st.selectbox("Select Unassigned Driver to Remove", options=list(driver_to_remove_options.keys()))
+            if st.form_submit_button("Remove Driver"):
+                driver_id_to_remove = driver_to_remove_options[selected_driver_label]
+                sql = "DELETE FROM BOOTCAMP_RALLY.TEAMS_DATA.DRIVERS WHERE driver_id = %s"
+                if execute_command(sql, (driver_id_to_remove,)):
+                    st.success("Driver removed successfully!")
+                    st.cache_data.clear()
+                    st.rerun()
+
+# Remove a Team
+with st.sidebar.expander("Remove a Team"):
+    with st.form("remove_team_form", clear_on_submit=True):
+        teams_with_cars = set(cars_df['TEAM_NAME'].unique())
+        teams_with_drivers = set(drivers_df['TEAM_NAME'].unique())
+        teams_in_use = teams_with_cars.union(teams_with_drivers)
+        removable_teams_df = teams_df[~teams_df['TEAM_NAME'].isin(teams_in_use)]
+
+        if removable_teams_df.empty:
+            st.warning("No empty teams to remove. Remove or reassign all cars and drivers from a team first.")
+        else:
+            team_to_remove_options = removable_teams_df['TEAM_NAME'].tolist()
+            selected_team_name = st.selectbox("Select Empty Team to Remove", options=team_to_remove_options)
+            if st.form_submit_button("Remove Team"):
+                sql = "DELETE FROM BOOTCAMP_RALLY.TEAMS_DATA.TEAMS WHERE team_name = %s"
+                if execute_command(sql, (selected_team_name,)):
+                    st.success("Team removed successfully!")
+                    st.cache_data.clear()
+                    st.rerun()
 # Race Simulation
 st.header("Rally Simulation")
 if st.button("Start Race!"):
@@ -223,4 +279,5 @@ if st.button("Start Race!"):
         
         st.cache_data.clear()
         st.rerun()
+
 
